@@ -7,3 +7,4 @@ class Config(object):
         self.xmlroot = 'D:/VOCdevkit/VOC2007/Annotations'
         self.batchsize = 1
         self.transform = transforms.Compose([transforms.CenterCrop((512, 512)), transforms.ToTensor()])
+        self.is_cuda = True

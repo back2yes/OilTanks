@@ -1,4 +1,5 @@
 import torch
+from torch import optim
 import numpy as np
 from torchvision import datasets, transforms
 from models import resnet
@@ -6,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.autograd import Variable
 from torch.nn import functional
 from torch import nn
-from utils.pascal_parser import PascalDataset
+from utils.SimpleParser import SimpleDataset
 from config.config import Config
 
 ''' original batch_NN_loss used in my former work (simple_rnn/src/eval_ps_gen.py)
@@ -94,20 +95,24 @@ def to_var(someTensor, is_cuda=True):
 
 
 class RPN(nn.Module):
-    def __init__(self, inChan):
+
+    # numprops = num of proposals
+    def __init__(self, inChan, numprops):
         super(RPN, self).__init__()
         self.conv1 = nn.Conv2d(inChan, inChan, 3, bias=False, padding=1)
         self.conv2 = nn.Conv2d(inChan, inChan, 3, bias=False, padding=1)
-        self.convCoord = nn.Conv2d(inChan, 4, 3, bias=False, padding=1)
-        self.convScore = nn.Conv2d(inChan, 1, 3, bias=False, padding=1)
+        self.convCoord = nn.Conv2d(inChan, numprops, 3, bias=False, padding=1)
+        # self.convScore = nn.Conv2d(inChan, 1, 3, bias=False, padding=1)
 
     def forward(self, feat):
         feat = functional.relu(self.conv1(feat), True)
         feat = functional.relu(self.conv2(feat), True)
         coord = self.convCoord(feat)
-        score = functional.sigmoid(self.convScore(feat))
+        coord = functional.sigmoid(functional.adaptive_avg_pool2d(coord, (4, 1))).squeeze(-1)
 
-        return coord, score
+        # score = functional.sigmoid(self.convScore(feat))
+
+        return coord
 
 
 class REG(nn.Module):
@@ -128,37 +133,57 @@ class REG(nn.Module):
 
 
 class DetNet(nn.Module):
-    def __init__(self):
+    def __init__(self, lr=1e-4):
         super(DetNet, self).__init__()
+        self.lr = lr
         self.feat = resnet.resnet34(True)
-        self.rpn = self.build_rpn()
-        self.reg = self.build_reg()
-        self.roi_pooling = nn.AdaptiveAvgPool2d((7, 7))
+        self.rpn = self.build_rpn(512, 100)
+        # self.reg = self.build_reg()
+        # self.roi_pooling = nn.AdaptiveAvgPool2d((7, 7))
+        self.opt = optim.Adam(self.parameters(), lr=self.lr)
 
-    def build_rpn(self):
+    def build_rpn(self, inCh, outCh):
         # rpn = nn.
-        pass
+        rpn = RPN(inCh, outCh)
+        return rpn
+
+    def forward(self, x):
+        feat = self.feat(x)
+        proposals = self.rpn(feat)
+        return proposals
+
+    def step(self, xs, ys):
+        var_xs, var_ys = to_var(xs), to_var(ys)
+        var_props = net(var_xs)
+        self.zero_grad()
+        var_loss = batch_NN_loss(var_props, var_ys)
+        var_loss.backward()
+        self.opt.step()
+        return var_props, var_loss
 
 
 # write a stupid and dirty localizer
 if __name__ == '__main__':
     _c = Config()
-    # net = models.squeezenet1_1(True).features
-    # net = resnet.resnet34(True)
-    # net.cuda()
-    # ds = PascalDataset(_c.imgroot, _c.xmlroot, _c.transform)
-    # dl = DataLoader(ds, _c.batchsize, True)
-    # for ii, minibatch in enumerate(dl):
-    #     xs, ys = minibatch
-    #     var_xs = to_var(xs)
-    #     var_feat = net(var_xs)
-    #     print(var_feat.size())
-    x_npy = np.array([0.0, 1, 2])[None, :, None]
-    y_npy = np.array([0.0, 1, 2, 3, 4])[None, :, None]
-    # x = torch.randn(32, 1000, 1).cuda()
-    # y = torch.randn(32, 1000, 1).cuda()
-    x = torch.from_numpy(x_npy)
-    y = torch.from_numpy(y_npy)
+    net = DetNet()
+    if _c.is_cuda:
+        net.cuda()
 
-    print(batch_NN_loss(x, y))
-    # print(original_batch_NN_loss(x, y))
+    ds = SimpleDataset(_c.imgroot, _c.xmlroot)
+    dl = DataLoader(ds, 1, False)
+    for ii, minibatch in enumerate(dl):
+        xs, ys = minibatch
+        # print(xs)  #
+        # print(len(ys))
+        # print(ys.size())  #
+        # var_xs, var_ys = to_var(xs), to_var(ys)
+        # var_props = net(var_xs)
+        # var_loss = batch_NN_loss(var_props, var_ys)
+
+        print(ii)
+        var_props, var_loss = net.step(xs, ys)
+        print(var_loss)
+
+        # print('var_props', var_props.size())
+        # print('ys', ys.size())
+        # print(var_loss)
