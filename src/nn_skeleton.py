@@ -9,6 +9,8 @@ from torch.nn import functional
 from torch import nn
 from utils.SimpleParser import SimpleDataset
 from config.config import Config
+# from tensorboardX import FileWriter
+from tensorboardX import SummaryWriter
 
 ''' original batch_NN_loss used in my former work (simple_rnn/src/eval_ps_gen.py)
     author: Joey Guo
@@ -168,22 +170,26 @@ if __name__ == '__main__':
     net = DetNet()
     if _c.is_cuda:
         net.cuda()
-
+    writer = SummaryWriter('../logs/exp01')
     ds = SimpleDataset(_c.imgroot, _c.xmlroot)
-    dl = DataLoader(ds, 1, False)
-    for ii, minibatch in enumerate(dl):
-        xs, ys = minibatch
-        # print(xs)  #
-        # print(len(ys))
-        # print(ys.size())  #
-        # var_xs, var_ys = to_var(xs), to_var(ys)
-        # var_props = net(var_xs)
-        # var_loss = batch_NN_loss(var_props, var_ys)
+    dl = DataLoader(ds, 1, True)
+    for epoch in range(1000):
+        dataiter = iter(dl)
 
-        print(ii)
-        var_props, var_loss = net.step(xs, ys)
-        print(var_loss)
+        for ii, minibatch in enumerate(dataiter, 0):
+            xs, ys = minibatch
+            # print(xs)  #
+            # print(len(ys))
+            # print(ys.size())  #
+            # var_xs, var_ys = to_var(xs), to_var(ys)
+            # var_props = net(var_xs)
+            # var_loss = batch_NN_loss(var_props, var_ys)
 
-        # print('var_props', var_props.size())
-        # print('ys', ys.size())
-        # print(var_loss)
+            print(ii)
+            var_props, var_loss = net.step(xs, ys)
+            writer.add_scalar('loss', var_loss.data, ii + epoch * len(dl))
+            print(var_loss)
+
+            # print('var_props', var_props.size())
+            # print('ys', ys.size())
+            # print(var_loss)
