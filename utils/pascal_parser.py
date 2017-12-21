@@ -5,8 +5,8 @@ from torchvision.datasets import ImageFolder
 import torch
 import pandas as pd
 from PIL import Image
+import os.path
 
-xml_data = open('D:/VOCdevkit/VOC2007/Annotations/000001.xml').read()
 
 """
 Person: person
@@ -72,8 +72,10 @@ def make_dataset(imgdir, xmldir):
 
     return datalist
 
+
 def reformatSlash(string):
     return string.replace('\\', '/')
+
 
 def renameExt(fn, ext='xml'):
     return fn.rsplit('/', 1)[-1][:-4] + '.' + ext
@@ -89,14 +91,27 @@ def pil_loader(path):
 # print(parseXML(xml_data))
 
 class PascalDataset(Dataset):
-    def __init__(self, dataroot):
-        self.dataroot = dataroot
-        self.datalist = make_dataset()
-
+    def __init__(self, imgroot, xmlroot=None, transform=None):
+        self.dataroot = imgroot
+        if xmlroot is None:
+            xmlroot = imgroot.replace('JPEGImages', 'Annotations')
+        self.xmlroot = xmlroot
+        self.datalist = make_dataset(imgroot, xmlroot)
+        self.transform = transform
+        self._loader = pil_loader
 
     def __getitem__(self, index):
         imgfn, annot = self.datalist[index]
+        imgdata = self._loader(imgfn)
+        if self.transform is not None:
+            imgdata = self.transform(imgdata)
+        else:
+            imgdata = transforms.ToTensor()(imgdata)
+        # print(imgdata)
+        return imgdata, annot
 
+    def __len__(self):
+        return len(self.datalist)
 
 
 if __name__ == '__main__':
@@ -106,7 +121,21 @@ if __name__ == '__main__':
     # for ii, fn in enumerate(sorted(glob.glob(os.path.join('D:/VOCdevkit/VOC2007/Annotations', '*.xml')))):
     # print(fn)
     # print(parseXML(fn))
+
+    # xml_data = open('D:/VOCdevkit/VOC2007/Annotations/000001.xml').read()
     xmldir = 'D:/VOCdevkit/VOC2007/Annotations'
     imgdir = 'D:/VOCdevkit/VOC2007/JPEGImages'
-    for item in make_dataset(imgdir, xmldir):
-        print(item)
+    # for item in make_dataset(imgdir, xmldir):
+    #     print(item)
+    # ds = PascalDataset(imgdir, xmldir, transforms.ToTensor())
+    transform = transforms.Compose([
+        transforms.Scale((411, 222)),  # the output tensor is 3x222x411
+        transforms.ToTensor()
+    ])
+    # ds = PascalDataset(imgdir, xmldir, transform)
+    ds = PascalDataset(imgdir, xmldir)
+    dl = DataLoader(ds, 32, True)
+    for ii, minibatch in enumerate(dl):
+        xs, ys = minibatch
+        # print(xs)  #
+        print(ys)  #
